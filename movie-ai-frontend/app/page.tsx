@@ -5,11 +5,22 @@ import { FormEvent, useMemo, useState } from "react";
 type Message = {
   role: "user" | "assistant";
   text: string;
+  sourceData?: SourceMovie[];
+};
+
+type SourceMovie = {
+  title?: string;
+  genre?: string;
+  director?: string;
+  overview?: string;
+  poster?: string;
+  rating?: number;
 };
 
 type ChatApiResponse = {
   message?: string;
   error?: string;
+  sourceData?: SourceMovie[];
 };
 
 const MOVIE_API_BASE_URL =
@@ -67,10 +78,15 @@ export default function Home() {
         (data.error
           ? `I could not generate a recommendation: ${data.error}`
           : "I could not generate a recommendation right now. Please try again.");
+      const sources = Array.isArray(data.sourceData) ? data.sourceData : [];
 
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", text: assistantText },
+        {
+          role: "assistant",
+          text: assistantText,
+          sourceData: sources,
+        },
       ]);
     } catch (error) {
       const fallbackText =
@@ -118,6 +134,43 @@ export default function Home() {
                   }`}
                 >
                   <p>{message.text}</p>
+                  {message.role === "assistant" &&
+                  message.sourceData?.length ? (
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {message.sourceData.map((movie, sourceIndex) => (
+                        <div
+                          key={`${movie.title ?? "source"}-${sourceIndex}`}
+                          className="flex gap-2 rounded-xl border border-white/10 bg-zinc-950/80 p-2"
+                        >
+                          {movie.poster ? (
+                            <img
+                              src={movie.poster}
+                              alt={movie.title ?? "Movie poster"}
+                              className="h-16 w-12 flex-none rounded-md object-cover"
+                            />
+                          ) : null}
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-semibold text-amber-200">
+                              {movie.title ?? "Recommended Movie"}
+                            </p>
+                            <p className="line-clamp-1 text-[11px] text-zinc-300">
+                              {movie.genre ?? "Genre not provided"}
+                            </p>
+                            <p className="line-clamp-1 text-[11px] text-zinc-400">
+                              {movie.director
+                                ? `Dir. ${movie.director}`
+                                : "Director unknown"}
+                            </p>
+                            {typeof movie.rating === "number" ? (
+                              <p className="text-[11px] text-sky-300">
+                                IMDb: {movie.rating.toFixed(1)}
+                              </p>
+                            ) : null}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                 </article>
               ))
             ) : (
