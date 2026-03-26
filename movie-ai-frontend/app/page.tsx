@@ -7,6 +7,14 @@ type Message = {
   text: string;
 };
 
+type ChatApiResponse = {
+  message?: string;
+  error?: string;
+};
+
+const MOVIE_API_BASE_URL =
+  process.env.NEXT_PUBLIC_MOVIE_API_URL ?? "http://localhost:3000";
+
 const seedMessages: Message[] = [
   {
     role: "assistant",
@@ -18,58 +26,65 @@ const seedMessages: Message[] = [
   },
 ];
 
-function recommendMovie(prompt: string) {
-  const lower = prompt.toLowerCase();
-
-  if (
-    lower.includes("sci") ||
-    lower.includes("space") ||
-    lower.includes("future")
-  ) {
-    return "You might love Arrival (2016). Calm, emotional sci-fi with a strong concept and excellent performances.";
-  }
-  if (
-    lower.includes("thriller") ||
-    lower.includes("mystery") ||
-    lower.includes("twist")
-  ) {
-    return "Try Prisoners (2013). It's a tense mystery thriller with layered characters and a gripping atmosphere.";
-  }
-  if (lower.includes("romance") || lower.includes("love")) {
-    return "Watch About Time (2013). Warm, romantic, and heartfelt with a unique time-travel angle.";
-  }
-  if (lower.includes("funny") || lower.includes("comedy")) {
-    return "Go with The Nice Guys (2016). Sharp humor, great chemistry, and a stylish detective story.";
-  }
-  if (lower.includes("animated") || lower.includes("anime")) {
-    return "Recommendation: Spider-Man: Into the Spider-Verse (2018). Creative visuals, emotional depth, and nonstop energy.";
-  }
-
-  return "Based on your vibe, I recommend Nightcrawler (2014): dark, intense, and highly engaging. Want options in a specific genre too?";
-}
-
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>(seedMessages);
   const [input, setInput] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
 
   const hasMessages = useMemo(() => messages.length > 0, [messages.length]);
 
-  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const onSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const trimmed = input.trim();
 
-    if (!trimmed) {
+    if (!trimmed || isLoading) {
       return;
     }
 
     const userMessage: Message = { role: "user", text: trimmed };
-    const assistantMessage: Message = {
-      role: "assistant",
-      text: recommendMovie(trimmed),
-    };
-
-    setMessages((prev) => [...prev, userMessage, assistantMessage]);
+    setMessages((prev) => [...prev, userMessage]);
     setInput("");
+    setIsLoading(true);
+    setRequestError(null);
+
+    try {
+      const response = await fetch(`${MOVIE_API_BASE_URL}/movie/chat`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message: trimmed }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Request failed with status ${response.status}`);
+      }
+
+      const data = (await response.json()) as ChatApiResponse;
+      const assistantText =
+        data.message?.trim() ||
+        (data.error
+          ? `I could not generate a recommendation: ${data.error}`
+          : "I could not generate a recommendation right now. Please try again.");
+
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: assistantText },
+      ]);
+    } catch (error) {
+      const fallbackText =
+        "I could not reach the movie API. Make sure the backend is running on http://localhost:3000 and try again.";
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: fallbackText },
+      ]);
+      setRequestError(
+        error instanceof Error ? error.message : "Unknown request error",
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -111,6 +126,11 @@ export default function Home() {
                 want.
               </p>
             )}
+            {isLoading ? (
+              <article className="max-w-[90%] rounded-2xl border border-amber-300/20 bg-zinc-900 px-4 py-3 text-sm leading-relaxed text-zinc-200 shadow-lg sm:max-w-[75%] sm:text-base">
+                <p>Thinking of the best recommendation...</p>
+              </article>
+            ) : null}
           </div>
 
           <form
@@ -121,16 +141,23 @@ export default function Home() {
               <input
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
+                disabled={isLoading}
                 placeholder="Example: Recommend an emotional sci-fi movie for tonight"
-                className="h-12 flex-1 rounded-xl border border-white/15 bg-zinc-900 px-4 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-amber-300/80 focus:outline-none"
+                className="h-12 flex-1 rounded-xl border border-white/15 bg-zinc-900 px-4 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-amber-300/80 focus:outline-none disabled:cursor-not-allowed disabled:opacity-70"
               />
               <button
                 type="submit"
-                className="h-12 rounded-xl bg-amber-400 px-5 text-sm font-semibold text-zinc-900 transition hover:bg-amber-300 focus:outline-none"
+                disabled={isLoading}
+                className="h-12 rounded-xl bg-amber-400 px-5 text-sm font-semibold text-zinc-900 transition hover:bg-amber-300 focus:outline-none disabled:cursor-not-allowed disabled:bg-amber-300/70"
               >
-                Send
+                {isLoading ? "Sending..." : "Send"}
               </button>
             </div>
+            {requestError ? (
+              <p className="mt-2 text-xs text-rose-300">
+                Request error: {requestError}
+              </p>
+            ) : null}
           </form>
         </section>
       </main>
